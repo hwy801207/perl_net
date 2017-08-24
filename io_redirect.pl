@@ -4,7 +4,6 @@ open my $ofd, ">", "newcctv.txt";
 select $ofd;
 
 while (<STDIN>) {
-
 	print STDOUT $_;
 }
 
@@ -18,3 +17,5 @@ if ($bytes == 20) {
 else {
 	print "--", $buffer;
 }
+
+# add a comment line
