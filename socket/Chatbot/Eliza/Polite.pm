@@ -34,5 +34,4 @@ sub one_line {
 
 sub done { return shift->{_quit} }
 
-
 1;
