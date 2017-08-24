@@ -9,3 +9,5 @@ system "date";
 
 open STDOUT, ">&", $saveout;
 print "STDOUT restored\n";
+
+# add something to reader
