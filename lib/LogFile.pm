@@ -2,17 +2,15 @@ package LogFile;
 # file: LogFile.pm
 # Figure 14.3: Logging to a File
 
+use strict;
 use IO::File;
 use Fcntl ':flock';
 use Carp 'croak';
 
-use strict;
-use vars qw(@ISA @EXPORT);
-require Exporter;
-@ISA = 'Exporter';
-@EXPORT = qw(DEBUG NOTICE WARNING CRITICAL
-             init_log set_priority
-             log_debug log_notice log_warn log_die);
+use Exporter qw/ import /;
+our @EXPORT = qw/ DEBUG NOTICE WARNING CRITICAL
+             init_log log_priority
+             log_debug log_notice log_warn log_die log_info /;
 
 use constant DEBUG    => 0;
 use constant NOTICE   => 1;
@@ -23,7 +21,7 @@ my ($PRIORITY,$fh);  # globals
 
 sub init_log {
   my $filename = shift;
-  $fh       = IO::File->new($filename,O_WRONLY|O_APPEND|O_CREAT,0644) || return;
+  $fh       = IO::File->new($filename, O_WRONLY|O_APPEND|O_CREAT, 0644) || return;
   $fh->autoflush(1);
   $PRIORITY = DEBUG;   # log all
   $SIG{__WARN__} = \&log_warn;
@@ -68,6 +66,11 @@ sub log_die {
   return unless CRITICAL >= $PRIORITY;
   _log(_msg('critical',@_));
   die @_;
+}
+
+sub log_info {
+  return unless NOTICE >= $PRIORITY;
+  _log(_msg('notice', @_));
 }
 
 1;
