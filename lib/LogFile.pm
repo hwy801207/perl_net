@@ -40,7 +40,7 @@ sub _msg {
   my $msg = join('',@_) || "Something's wrong";
   my ($pack,$filename,$line) = caller(1);
   $msg .= " at $filename line $line\n" unless $msg =~ /\n$/;
-  return "$time [$priority] $msg";
+  return "$$ $time [$priority] $msg";
 }
 
 sub _log {
