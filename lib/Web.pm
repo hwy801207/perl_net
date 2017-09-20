@@ -4,7 +4,7 @@ use Exporter qw/import/;
 
 our @EXPORT = qw/handle_connection docroot/;
 
-my $DOCUMENT_ROOT = '/Users/huangweiyi/www/html';
+my $DOCUMENT_ROOT = '/Users/huangweiyi/www/';
 my $CRLF = "\015\012";
 
 sub handle_connection {
@@ -13,7 +13,7 @@ sub handle_connection {
     local $/ = "$CRLF$CRLF";
 	my $request = <$c>;
 	return  invalid_request($c)
-		unless ($method, $url) = $request =~ m !^(GET|HEAD) (/.*) HTTP/1\.[01]!;
+		unless ($method, $url) = $request =~ m!^(GET|HEAD) (/.*) HTTP/1\.[01]!;
 	return not_found($c) unless ($fh, $type, $length) = lookup_file($url);
 	return redirect($c, "$url/") if $type eq 'directory';
 
