@@ -1,36 +1,87 @@
 package Daemon;
 use Base;
-use LogFile;
 use Carp qw/croak cluck/;
-use POSIX qw/setsid WNOHANG/;
+use POSIX qw/:signal_h setsid WNOHANG/;
 use IO::File;
+use Carp::Heavy;
+use File::Basename;
+use Cwd;
+use Sys::Syslog qw/:DEFAULT setlogsock/;
+use Exporter qw/import/;
+
+our @EXPORT= qw/init_server /;
 
 use constant PIDPATH => '/tmp/';
+use constant FACILITY => 'local0';
 
-my ($pid, $pidfile, $logfile);
+our %CHILDREN;
+my ($pid, $pidfile, $logfile, $saved_dir, $CWD);
 
 sub init_server {
-	$pidfile = shift || get_pid_filename();
-	$logfile = shift;
+	my ($user, $group);
+	($pidfile, $user, $group) = @_;
+	$pidfile ||= get_pid_filename();
 	my $fh = open_pid_file($pidfile);
 	become_daemon();
-	print $fh $$;
+	print $fh, $$;
 	close $fh;
-	init_log($logfile);
+	init_log();
+	change_privileges($user, $group) if defined $user and defined $group;
 	return $pid = $$;
 }
 
 sub become_daemon {
 	die "Can't fork" unless defined (my $child = fork);
 	exit 0 if $child;
-	setsid();  #become session leader
+	POSIX::setsid();  #become session leader
 	open(STDIN, "<", "/dev/null");
 	open(STDOUT, ">", "/dev/null");
 	open(STDERR, ">&", STDOUT);
+	$CWD = getcwd;
 	chdir '/';
+	umask(0);
 	$ENV{PATH} = '/bin:/sbin:/usr/bin:/usr/sbin';
+	delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 	$SIG{CHLD} = \&reap_child;
 }
+
+sub change_privileges {
+	my ($user, $group) = @_;
+	my $uid = getpwnam($user);
+	my $gid = getgrnam($group);
+	$) = "$gid $gid";
+	$( = $gid;
+	$> = $uid;
+}
+
+sub launch_child {
+	my $callback = shift;
+	my $home = shift;
+	my $signals = POSIX::SigSet->new(SIGINT, SIGTERM, SIGCHLD, SIGHUP);
+	sigprocmask(SIG_BLOCK, $signals);
+	log_die("can't fork: $!") unless defined (my $child = fork());
+	if ($child) {
+		$CHILDREN{$child} = $callback || 1;
+	} else {
+		$SIG{HUP} = $SIG{INT} = $SIG{CHILD} = $SIG{TERM} = "DEFAULT";
+		prepare_child($home);
+	}
+	sigprocmask(SIG_UNBLOCK, $signals);
+	return $child;
+}
+
+sub prepare_child{
+	my $home = shift;
+	if ($home) {
+		local($>, $<) = ($<, $>);
+		chdir $home || croak "chdir failed $!";
+		chroot $home || croak "chroot $home failed: $!";
+	}
+	$< = $>; # set real UID
+}
+
+
+
 
 sub get_pid_filename {
 	my $basename = basename($0, '.pl');
@@ -44,17 +95,67 @@ sub open_pid_file {
 		my $pid = <$fh>;
 		croak "Server already running with PID: $pid" if kill 0 => $pid;
 		croak "Can't unlink PID file $file" unless -w $file && unlink $file;
+		cluck "Removeing PID file for defunct server process $pid\n";
+		croak "Can't unlink PID file $file" unless -w $file && unlink $file
 	}
 
 	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644)
-			or die "Can't create $file: $!\n";
+		or die "Can't create $file: $!\n";
 }
 
-
+# 收割子进程
 sub reap_child {
-	do {} while waitpid(-1, WNOHANG) > 0;
+	while (my $child = waitpid(-1, WNOHANG)) {
+		$CHILDREN{$child}-> ($child) if ref $CHILDREN{$child} eq 'CODE';
+		delete $CHILDREN{$child};
+	}
 }
 
-END { unlink $pidfile if defined $pid and $$ == $pid }
+# kill 
+sub kill_children {
+	kill TERM => keys %CHILDREN;
+	sleep while %CHILDREN;
+}
+
+
+sub do_relaunch {
+	$> = $<; # regain privileges
+	chdir $1 if $CWD =~  m#([./a-zA-Z0-9_-]+)#;
+	croak "bad program name" unless $0 =~ m#([a-zA-Z0-9_-])#;
+	my $program = $1;
+	my $port = $1 if $ARGV[0] =~ /(\d+)/;
+	unlink $pidfile;
+	exec 'perl', '-T', $program, $port or croak "Could not exec: $!";
+}
+
+sub init_log {
+	setlogsock('unix');
+	my $basename = basename($0);
+	openlog($basename, 'pid', FACILITY);
+	$SIG{__WARN__} = \&log_warn;
+	$SIG{__DIE__} = \&log_die;
+}
+
+sub log_debug { syslog('debug', _msg(@_))}
+sub log_notice { syslog('notice', _msg(@_))}
+sub log_warn{ syslog('warning', _msg(@_))}
+sub log_die {
+	syslog('crit', _msg(@_)) unless $^S;
+	die @_;
+}
+
+sub _msg {
+	my $msg = join('', @_) || "Something's wrong";
+	my ($pack, $filename, $line) = caller(1);
+	$msg .= " at $filename line $line\n" unless $msg =~ /\n$/;
+	$msg;
+}
+
+END { 
+	$> = $<; # regain privileges
+	unlink $pidfile if defined $pid and $$ == $pid 
+}
 
 1;
+
+__END__
