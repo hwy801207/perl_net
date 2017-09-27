@@ -9,7 +9,7 @@ use Cwd;
 use Sys::Syslog qw/:DEFAULT setlogsock/;
 use Exporter qw/import/;
 
-our @EXPORT= qw/init_server /;
+our @EXPORT= qw/init_server launch_child/;
 
 use constant PIDPATH => '/tmp/';
 use constant FACILITY => 'local0';
@@ -25,7 +25,6 @@ sub init_server {
 	become_daemon();
 	print $fh, $$;
 	close $fh;
-	init_log();
 	change_privileges($user, $group) if defined $user and defined $group;
 	return $pid = $$;
 }
@@ -43,6 +42,7 @@ sub become_daemon {
 	$ENV{PATH} = '/bin:/sbin:/usr/bin:/usr/sbin';
 	delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 	$SIG{CHLD} = \&reap_child;
+	init_log();
 }
 
 sub change_privileges {
@@ -63,7 +63,7 @@ sub launch_child {
 	if ($child) {
 		$CHILDREN{$child} = $callback || 1;
 	} else {
-		$SIG{HUP} = $SIG{INT} = $SIG{CHILD} = $SIG{TERM} = "DEFAULT";
+		$SIG{HUP} = $SIG{INT} = $SIG{CHLD} = $SIG{TERM} = "DEFAULT";
 		prepare_child($home);
 	}
 	sigprocmask(SIG_UNBLOCK, $signals);
