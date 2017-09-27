@@ -1,0 +1,90 @@
+问题：
+    运行一个程序，捕获程序的输出
+
+解决办法:
+    backticks
+    标量上下文
+    $output = `program args`; #如果是多行就会拼接成一行
+    
+    列表上下文
+    @output = `program args`; #多行保存在一个数组中
+
+    或者
+    open my $fh, "-|", "program", @args
+        or die "Can't run program: $!\n";
+    while(<$fh>) {
+        $output .= $_;
+    }
+
+    close $fh;
+
+讨论:
+    私用backticks 是一种捕获程序输出的简便方法，但是这种方法会导致程序退出才能退出backticks，这在有些收集输出的情况下是低效的，比如
+    `fsync -y /dev/rsdl1`
+    无法动态的获取磁盘检查与修复的结果，必须等到fsync完成后你才能看到结果
+
+    并且backticks是通过shell来完成程序的运行的， 在特权用户下，容易出现安全问题，好处是可以使用shell的通配符等特性
+
+    @files = `ls -l /music/*.mp3`;
+
+    如果你想在程序运行的时候就能获取输出，而不是等运行结束后才获取输出，可以这样做：
+    open(my $fd, "ls -l /music/*.mp3 |") or die "Can't run program: $!\n";
+    while (<$fd>) {
+        # print or some other operation to $_
+    }
+    close $fd;
+
+    在perl 5.8 以前你只能使用带有2个参数的open函数，如果你的perl版本比5.8早，请使用如下形式
+    open(OUTPUT, "ls @args |") or die "Can't run program: $!\n";
+
+    下面用更底层的技术来实现这个功能： pipe 进程间通信， fork 创建子进程， exec 完成子进程的替换
+
+    use POSIX qw/:sys_wait_h/;
+
+    my ($readme, $writeme);
+    pipe $readme, $writeme;
+    if (my $pid = fork) {
+        # 父进程
+        $SIG{CHLD} = sub { 1 while waitpid(-1, WNOHANG) > 0 };
+        close $writeme;   
+    }
+    else {
+        die "Can't fork child:$!" unless defined $pid;
+        #child
+        open(STDOUT, ">&=", $writeme) or die "Can't redirect STDOUT:$!\n";
+        close $readme;
+        exec($program, $arg1, $arg2)  or die "Can't run $program: $!\n";
+    }
+
+    my $string;
+    while (<$readme>) {
+        $string .= $_;
+    }
+
+    close $readme;
+
+没有什么理由非要用这么底层的技术实现输出捕获，应该尽可能使用"-|" 来完成输出的捕获。但是，有时候，比如你希望子进程能忽略Ctrl+C 那你可能需要使用底层技术来
+捕获INT信号，默认情况下子进程继承父进程的信号处理函数，所以Ctrl+C的时候也是影响子进程的。
+
+16.2 运行另外一个程序
+    问题：
+        用一个程序，运行另外一个程序，直到它结束，然后继续主进程。另外一个程序是与主进程共享STDIN STDOUT 和STDERR的
+    解决方案
+        使用system 调用shell 来执行参数中的程序
+        system("vim $myfile");
+        如果不想通过shell来运行程序
+        $statue = system("vim", "$myfile");
+    
+    讨论：
+    system函数是运行程序最简单的方式，它不捕获输出，它返回执行程序的退出状态。当调用程序执行的时候，主程序会阻塞，这个时候调用程序可以利用STDIN，STDOUT来完成交互
+    当单参数形式的时候，system调用shell来执行程序，所以可以在shell中重定向程序的输入与输出
+    system("cmd1 args|cmd2|cmd3>outfile");
+    system("cmd1 args <  infile > outfile 2> errfile");
+
+    为了避免shell可以调用列表参数形式的system
+    $statue = system($program, $arg1, $arg2)
+        die "$program exited funny: $?" unless $statue == 0;
+
+    system的返回值不知包括程序的退出值，也包括导致进程退出时的信号值，参考章节16.19 如何获取程序退出的信号值
+
+    system函数忽略SIGINT和 SIGQUIT，当调用程序运行的时候，
