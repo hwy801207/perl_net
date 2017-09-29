@@ -18,28 +18,32 @@ $SIG{INT} = $SIG{TERM} = sub { $DONE++ };
 my $port = shift || 8080;
 
 my $socket = IO::Socket::INET->new(LocalPort => $port,
-				   				   Listen	=> 200,
+				   				   Listen	=> 500,
 							   	   Reuse	=> 1,
 							   	   )
 									   or die "Can't create listen socket $!\n";
 my $IN = IO::Select->new($socket);
 
+# 问题出在这里
 init_server(PIDFILE);
 
-warn "Listening for connections on port $port\n";
+log_warn "Listening for connections on port $port\n";
 # accept loop
 
 while (!$DONE) {
-	next unless $IN->can_read;
+	log_warn("start loop ...");
+	next unless $IN->can_read(1);
 	next unless my $c = $socket->accept;
+	log_warn("get connection from!!!");
 	my $child = launch_child();
 	unless ($child) {
-		close $socket;
+		undef $socket;
 		handle_connection($c);
 		exit 0;
 	}
-	close $c;
+	undef $c;
+	log_warn("tail loog ...");
 }
 
-warn "Normal terminatation\n";
+log_warn "Normal terminatation\n";
 

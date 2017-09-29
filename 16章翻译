@@ -81,10 +81,53 @@
     system("cmd1 args|cmd2|cmd3>outfile");
     system("cmd1 args <  infile > outfile 2> errfile");
 
-    为了避免shell可以调用列表参数形式的system
+    为了避免调用shell可以使用列表参数形式的system
     $statue = system($program, $arg1, $arg2)
         die "$program exited funny: $?" unless $statue == 0;
 
     system的返回值不知包括程序的退出值，也包括导致进程退出时的信号值，参考章节16.19 如何获取程序退出的信号值
 
-    system函数忽略SIGINT和 SIGQUIT，当调用程序运行的时候，
+   当子进程运行的时候，system函数忽略SIGINT和 SIGQUIT信号,这就意味着这些信号只对子进程有效。通过检查system的返回值或者$?变量，你可以让你的主进程平滑退出
+
+   if (($signo = system(@arglist)) &= 127) {
+       die "program killed by signal $signal\n";
+   }
+
+   利用fork 和 exec 通过定义自己的信号处理函数，可以模拟system调用对SIGINT 信号的忽略
+
+   if ($pid = fork) {
+       local $SIG{INT} = sub { print "Task tsk, no process interrupts\n"};
+       waitpid($pid, 0);
+   }
+   else {
+       die "for subprocess failed: $!\n" unless defined $pidl
+       $SIG{INT} = "IGNORE";
+       exec("summarize", "/etc/logfiles") or die "Can't exec: $!\n";
+   }
+
+   少数程序会检查他们的程序名称。Shell会查看自己被调用的时候是否会以“-”开头，这意味着交互式运行。 第18章的expn如果被当做vrfy调用会有截然不同的行为。如果vrfy被安装到不同的两个地方
+   这就是为啥$0有可能并不是被调用程序的真实路径的原因。你有可能被多种方式欺骗
+
+   如果你想对你的程序撒个小谎，告诉它你执行的程序跟它的名字是一致的，可以在system 的参数列表前面加上真实的路径信息（对exec也是相同的）, 这个参数的后面是不需要逗号的，跟
+   printf 输出到句柄的形式一样 或者 类似于间接对象方法调用的形式(new Object 而不是 Object->new这样的形式)
+
+   $shell = '/bin/tcsh';
+   system $shell  '-csh'; # pretend is's a login shell
+
+   或者更加直接的方式
+   system {‘/bin/tcsh’} '-csh'  
+
+   在下面的例子中，程序的真实路径通过间接形式调用 {'/home/tchrist/scripts/expn'}. 'vrfy' 被当做程序的参数，而$0 存储程序的名称
+   # call expn as vrfy
+   system {'/home/tchrist/scripts/expn'} 'vrfy', @ADDRESSES;
+
+   使用system的间接调用形式也更安全。这种用法把参数强制的解释为多值的列表，甚至这个参数只有一个值的情况，这避免了shell的通配符扩展，甚至对于有空格的情况也是当做一个
+   参数
+
+   @args = ("echo surprise");
+   system @args;
+   system {$args[0]} @args;
+
+   第一种情况下，程序输出 surprise 而第二种情况下， @args 直接被当做一个程序执行，然后找不到运行失败，设置$?为一个非0值表示失败
+
+   参考 18 章的程序

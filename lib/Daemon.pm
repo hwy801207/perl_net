@@ -9,12 +9,16 @@ use Cwd;
 use Sys::Syslog qw/:DEFAULT setlogsock/;
 use Exporter qw/import/;
 
-our @EXPORT= qw/init_server launch_child/;
+our @EXPORT= qw/init_server launch_child prepare_child
+			    kill_children do_relaunch log_debug log_notice
+				log_warn log_die %CHILDREN/;
 
-use constant PIDPATH => '/tmp/';
-use constant FACILITY => 'local0';
+our $VERSION = '1.00';
 
 our %CHILDREN;
+use constant PIDPATH => '/tmp';
+use constant FACILITY => 'local0';
+
 my ($pid, $pidfile, $logfile, $saved_dir, $CWD);
 
 sub init_server {
@@ -23,8 +27,9 @@ sub init_server {
 	$pidfile ||= get_pid_filename();
 	my $fh = open_pid_file($pidfile);
 	become_daemon();
-	print $fh, $$;
-	close $fh;
+	print $fh $$;
+	$fh->close;
+	init_log();
 	change_privileges($user, $group) if defined $user and defined $group;
 	return $pid = $$;
 }
@@ -35,19 +40,18 @@ sub become_daemon {
 	POSIX::setsid();  #become session leader
 	open(STDIN, "<", "/dev/null");
 	open(STDOUT, ">", "/dev/null");
-	open(STDERR, ">&", STDOUT);
+	open(STDERR, ">&STDOUT");
 	$CWD = getcwd;
 	chdir '/';
 	umask(0);
 	$ENV{PATH} = '/bin:/sbin:/usr/bin:/usr/sbin';
 	delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 	$SIG{CHLD} = \&reap_child;
-	init_log();
 }
 
 sub change_privileges {
 	my ($user, $group) = @_;
-	my $uid = getpwnam($user);
+	my $uid = ($user);
 	my $gid = getgrnam($group);
 	$) = "$gid $gid";
 	$( = $gid;
@@ -67,6 +71,7 @@ sub launch_child {
 		prepare_child($home);
 	}
 	sigprocmask(SIG_UNBLOCK, $signals);
+	log_warn("child pid: $child");
 	return $child;
 }
 
@@ -85,20 +90,22 @@ sub prepare_child{
 
 sub get_pid_filename {
 	my $basename = basename($0, '.pl');
-	return PIDPATH . "$basename.pid";
+	return PIDPATH . "/$basename.pid";
 }
 
+# pid 文件操作
 sub open_pid_file {
 	my $file = shift;
 	if (-e $file) {
 		my $fh = IO::File->new($file) || return;
 		my $pid = <$fh>;
+		croak "Invalid PID file" unless $pid =~ /^(\d+)$/;
+		# 杀进程
 		croak "Server already running with PID: $pid" if kill 0 => $pid;
-		croak "Can't unlink PID file $file" unless -w $file && unlink $file;
 		cluck "Removeing PID file for defunct server process $pid\n";
+		# 删pid文件
 		croak "Can't unlink PID file $file" unless -w $file && unlink $file
 	}
-
 	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644)
 		or die "Can't create $file: $!\n";
 }
@@ -111,15 +118,16 @@ sub reap_child {
 	}
 }
 
-# kill 
+# kill 子进程 
 sub kill_children {
 	kill TERM => keys %CHILDREN;
+	# sleep 被信号中断，从而从循环中跳出来
 	sleep while %CHILDREN;
 }
 
-
+# 重新运行程序
 sub do_relaunch {
-	$> = $<; # regain privileges
+	$> = $<; # 有效用户替换为实际用户,获取了特权
 	chdir $1 if $CWD =~  m#([./a-zA-Z0-9_-]+)#;
 	croak "bad program name" unless $0 =~ m#([a-zA-Z0-9_-])#;
 	my $program = $1;
@@ -128,6 +136,7 @@ sub do_relaunch {
 	exec 'perl', '-T', $program, $port or croak "Could not exec: $!";
 }
 
+# 利用系统日志
 sub init_log {
 	setlogsock('unix');
 	my $basename = basename($0);

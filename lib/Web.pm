@@ -1,5 +1,6 @@
 package Web;
 use Base;
+use Daemon;
 use Exporter qw/import/;
 
 our @EXPORT = qw/handle_connection docroot/;
@@ -12,6 +13,7 @@ sub handle_connection {
 	my ($fh, $type, $length, $url, $method);
     local $/ = "$CRLF$CRLF";
 	my $request = <$c>;
+	log_warn("get request: $request");
 	return  invalid_request($c)
 		unless ($method, $url) = $request =~ m!^(GET|HEAD) (/.*) HTTP/1\.[01]!;
 	return not_found($c) unless ($fh, $type, $length) = lookup_file($url);
