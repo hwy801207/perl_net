@@ -34,11 +34,11 @@ while (!$DONE) {
 	next unless my $c = $socket->accept;
 	my $child = launch_child();
 	unless ($child) {
-		close $socket;
+		$socket->close;
 		handle_connection($c);
 		exit 0;
 	}
-	close $c;
+	$c->close;
 }
 
 warn "Normal terminatation\n";

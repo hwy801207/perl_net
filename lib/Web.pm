@@ -4,13 +4,13 @@ use Exporter qw/import/;
 
 our @EXPORT = qw/handle_connection docroot/;
 
-my $DOCUMENT_ROOT = '/Users/huangweiyi/www/';
+my $DOCUMENT_ROOT = "/home/hwy/www/";
 my $CRLF = "\015\012";
 
 sub handle_connection {
 	my $c = shift;
 	my ($fh, $type, $length, $url, $method);
-    local $/ = "$CRLF$CRLF";
+        local $/ = "$CRLF$CRLF";
 	my $request = <$c>;
 	return  invalid_request($c)
 		unless ($method, $url) = $request =~ m!^(GET|HEAD) (/.*) HTTP/1\.[01]!;

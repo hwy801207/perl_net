@@ -9,7 +9,7 @@ use Cwd;
 use Sys::Syslog qw/:DEFAULT setlogsock/;
 use Exporter qw/import/;
 
-our @EXPORT= qw/init_server launch_child/;
+our @EXPORT= qw/init_server launch_child log_warn/;
 
 use constant PIDPATH => '/tmp/';
 use constant FACILITY => 'local0';
@@ -23,9 +23,10 @@ sub init_server {
 	$pidfile ||= get_pid_filename();
 	my $fh = open_pid_file($pidfile);
 	become_daemon();
-	print $fh, $$;
+	print $fh $$;
 	close $fh;
-	change_privileges($user, $group) if defined $user and defined $group;
+	$SIG{CHLD} = \&reap_child;
+	#change_privileges($user, $group) if defined $user and defined $group;
 	return $pid = $$;
 }
 
@@ -35,14 +36,13 @@ sub become_daemon {
 	POSIX::setsid();  #become session leader
 	open(STDIN, "<", "/dev/null");
 	open(STDOUT, ">", "/dev/null");
-	open(STDERR, ">&", STDOUT);
+	open(STDERR, ">&STDOUT");
 	$CWD = getcwd;
 	chdir '/';
 	umask(0);
 	$ENV{PATH} = '/bin:/sbin:/usr/bin:/usr/sbin';
 	delete @ENV{'IFS', 'CDPATH', 'ENV', 'BASH_ENV'};
 	$SIG{CHLD} = \&reap_child;
-	init_log();
 }
 
 sub change_privileges {
@@ -99,13 +99,13 @@ sub open_pid_file {
 		croak "Can't unlink PID file $file" unless -w $file && unlink $file
 	}
 
-	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644)
-		or die "Can't create $file: $!\n";
+	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644) || die "Can't create $file: $!\n";
 }
 
 # 收割子进程
 sub reap_child {
-	while (my $child = waitpid(-1, WNOHANG)) {
+	while ((my $child = waitpid(-1, WNOHANG)) > 0) {
+		log_warn("at reap_child");
 		$CHILDREN{$child}-> ($child) if ref $CHILDREN{$child} eq 'CODE';
 		delete $CHILDREN{$child};
 	}
@@ -147,7 +147,7 @@ sub log_die {
 sub _msg {
 	my $msg = join('', @_) || "Something's wrong";
 	my ($pack, $filename, $line) = caller(1);
-	$msg .= " at $filename line $line\n" unless $msg =~ /\n$/;
+	$msg .= "[$$] at $filename line $line\n" unless $msg =~ /\n$/;
 	$msg;
 }
 
