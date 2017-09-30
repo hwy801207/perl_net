@@ -32,7 +32,8 @@ log_warn "Listening for connections on port $port\n";
 
 while (!$DONE) {
 	log_warn("start loop ...");
-	next unless $IN->can_read(1);
+	next unless $IN->can_read(0);
+	log_warn("step here ....");
 	next unless my $c = $socket->accept;
 	log_warn("get connection from!!!");
 	my $child = launch_child();

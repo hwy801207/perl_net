@@ -112,7 +112,7 @@ sub open_pid_file {
 
 # 收割子进程
 sub reap_child {
-	while (my $child = waitpid(-1, WNOHANG)) {
+	while ((my $child = waitpid(-1, WNOHANG)) > 0) {
 		$CHILDREN{$child}-> ($child) if ref $CHILDREN{$child} eq 'CODE';
 		delete $CHILDREN{$child};
 	}

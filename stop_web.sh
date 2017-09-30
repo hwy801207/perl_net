@@ -1,6 +1,6 @@
 #!/bin/bash
 
-id=`cat web_fork.pl`
+id=`cat /tmp/web_fork.pid`
 
 if [[ $id > 0 ]];then
 	kill -9 $id
