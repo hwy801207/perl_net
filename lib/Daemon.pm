@@ -106,8 +106,8 @@ sub open_pid_file {
 		# 删pid文件
 		croak "Can't unlink PID file $file" unless -w $file && unlink $file
 	}
-	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644)
-		or die "Can't create $file: $!\n";
+
+	return IO::File->new($file, O_WRONLY|O_CREAT|O_EXCL, 0644) || die "Can't create $file: $!\n";
 }
 
 # 收割子进程
@@ -156,7 +156,7 @@ sub log_die {
 sub _msg {
 	my $msg = join('', @_) || "Something's wrong";
 	my ($pack, $filename, $line) = caller(1);
-	$msg .= " at $filename line $line\n" unless $msg =~ /\n$/;
+	$msg .= "[$$] at $filename line $line\n" unless $msg =~ /\n$/;
 	$msg;
 }
 

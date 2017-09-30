@@ -38,12 +38,11 @@ while (!$DONE) {
 	log_warn("get connection from!!!");
 	my $child = launch_child();
 	unless ($child) {
-		undef $socket;
+		close $socket;
 		handle_connection($c);
 		exit 0;
 	}
-	undef $c;
-	log_warn("tail loog ...");
+	close $c;
 }
 
 log_warn "Normal terminatation\n";

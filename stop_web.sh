@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 id=`cat /tmp/web_fork.pid`
 

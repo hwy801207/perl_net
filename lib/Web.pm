@@ -5,13 +5,13 @@ use Exporter qw/import/;
 
 our @EXPORT = qw/handle_connection docroot/;
 
-my $DOCUMENT_ROOT = '/Users/huangweiyi/www/';
+my $DOCUMENT_ROOT = "$ENV{HOME}/www/";
 my $CRLF = "\015\012";
 
 sub handle_connection {
 	my $c = shift;
 	my ($fh, $type, $length, $url, $method);
-    local $/ = "$CRLF$CRLF";
+        local $/ = "$CRLF$CRLF";
 	my $request = <$c>;
 	log_warn("get request: $request");
 	return  invalid_request($c)
